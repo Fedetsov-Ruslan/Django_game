@@ -2,6 +2,7 @@ import csv
 import random
 from django.db import models
 from django.utils import timezone
+from django.db.models import F
 
 class Player(models.Model):
     player_id = models.CharField(max_length=100)
@@ -24,6 +25,7 @@ class PlayerLevel(models.Model):
     is_completed = models.BooleanField(default=False)
     score = models.PositiveIntegerField(default=0)
 
+    # мутод получегия приза
     def assign_prize(self):
         if self.is_completed:
             level_prizes = LevelPrize.objects.filter(level=self.level)
@@ -40,21 +42,26 @@ class PlayerLevel(models.Model):
                 )
             print(f"Приз {random_prize.prize.title} получен игроком {self.player.player_id}  за прохождение уровня {self.level.title}")
     
+    # метод получения данных
     def get_player_level_data(self):
-        player_prize_subquery = PlayerPrize.objects.filter(
-            player=models.OuterRef('player'),
-            prize__level=models.OuterRef('level')
-        ).values('prize__prize__title')[:1]  
-
-        queryset = PlayerLevel.objects.select_related('player', 'level').annotate(
-            prize_title=models.Subquery(player_prize_subquery)
-        ).values(
-            'id',
-            'player__player_id',
-            'level__title',
-            'is_completed',
-            'prize_title'
-        ).distinct()
+        queryset = (
+            Player.objects
+            .prefetch_related(
+                'playerlevel_set__level',  
+                'playerprize_set__prize__levelprize__level'  
+            )
+            .annotate(
+                level_title=F('playerlevel_set__level__title'),
+                is_completed=F('playerlevel_set__is_completed'),
+                prize_title=F('playerprize_set__prize__title')
+            )
+            .values(
+                'player_id',
+                'level_title',
+                'is_completed',
+                'prize_title'
+            )
+        )
 
         with open('data.csv', mode='w', newline='', encoding='utf-8-sig') as file:
             writer = csv.writer(file)
